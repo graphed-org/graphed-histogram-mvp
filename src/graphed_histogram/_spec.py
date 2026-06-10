@@ -29,12 +29,12 @@ _STORAGES: dict[str, Any] = {
 
 
 def _metadata_of(axis: Any) -> dict[str, str]:
-    md = getattr(axis, "metadata", None)
-    if md is None:
-        return {}
-    if isinstance(md, dict):
-        return {str(k): str(v) for k, v in sorted(md.items())}
-    return {"metadata": str(md)}
+    """Axis identity metadata: boost axes carry user attributes in ``__dict__`` (hist puts
+    ``name``/``label`` there). Everything is coerced to str for the canonical encoding; only
+    str-valued entries restore as-is (enough for hist's named axes)."""
+    extras = getattr(axis, "__dict__", None) or {}
+    out = {str(k): str(v) for k, v in sorted(extras.items()) if v is not None}
+    return out
 
 
 def _axis_spec(axis: Any) -> dict[str, Any]:
@@ -78,33 +78,38 @@ def _axis_spec(axis: Any) -> dict[str, Any]:
     raise TypeError(f"unsupported axis type for a deferred fill: {type(axis).__name__}")
 
 
+def _restore_metadata(axis: Any, md: dict[str, str]) -> Any:
+    for k, v in md.items():
+        axis.__dict__[k] = v
+    return axis
+
+
 def _make_axis(spec: dict[str, Any]) -> Any:
-    md = spec.get("metadata") or None
+    md = spec.get("metadata") or {}
     kind = spec["type"]
     if kind == "Regular":
-        return bh.axis.Regular(
+        ax = bh.axis.Regular(
             spec["bins"],
             spec["start"],
             spec["stop"],
             underflow=spec["underflow"],
             overflow=spec["overflow"],
-            metadata=md,
         )
-    if kind == "Variable":
-        return bh.axis.Variable(
-            spec["edges"], underflow=spec["underflow"], overflow=spec["overflow"], metadata=md
+    elif kind == "Variable":
+        ax = bh.axis.Variable(spec["edges"], underflow=spec["underflow"], overflow=spec["overflow"])
+    elif kind == "Integer":
+        ax = bh.axis.Integer(
+            spec["start"], spec["stop"], underflow=spec["underflow"], overflow=spec["overflow"]
         )
-    if kind == "Integer":
-        return bh.axis.Integer(
-            spec["start"], spec["stop"], underflow=spec["underflow"], overflow=spec["overflow"], metadata=md
-        )
-    if kind == "IntCategory":
-        return bh.axis.IntCategory(spec["categories"], metadata=md)
-    if kind == "StrCategory":
-        return bh.axis.StrCategory(spec["categories"], metadata=md)
-    if kind == "Boolean":
-        return bh.axis.Boolean(metadata=md)
-    raise TypeError(f"unknown axis spec type {kind!r}")  # pragma: no cover - encode/decode parity
+    elif kind == "IntCategory":
+        ax = bh.axis.IntCategory(spec["categories"])
+    elif kind == "StrCategory":
+        ax = bh.axis.StrCategory(spec["categories"])
+    elif kind == "Boolean":
+        ax = bh.axis.Boolean()
+    else:
+        raise TypeError(f"unknown axis spec type {kind!r}")
+    return _restore_metadata(ax, md)
 
 
 def spec_of(hist: bh.Histogram) -> str:

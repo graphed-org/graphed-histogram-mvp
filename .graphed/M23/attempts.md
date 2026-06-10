@@ -16,3 +16,12 @@
   boost.Histogram / factory / histogram / histogram2d / histogramdd.
 - gates: frozen 14/14 PASS · coverage 95.07% (>=90, branch) · ruff+format clean · mypy --strict
   clean · sphinx -W clean · IR byte-determinism pinned in-suite.
+
+## Iteration 1 — the hist.graphed integration surface — 2026-06-10
+
+- `_wrap_result` hook: compute() converts to the subclass's `_in_memory_type` when declared
+  (the hist.dask convention) — `hist.graphed.Hist.compute()` returns a real `hist.Hist`.
+- Axis identity metadata: boost axes carry user attributes (hist's name/label) in `__dict__`,
+  not in a `metadata=` kwarg — the canonical spec now captures/restores `__dict__` entries, so
+  names and labels survive record -> compute -> wrap. Spec encode/rebuild remains a fixed point
+  (pinned).

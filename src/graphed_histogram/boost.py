@@ -172,6 +172,12 @@ class Histogram(bh.Histogram):
         self._evaluators[chash] = evaluator
         return self
 
+    def _wrap_result(self, result: bh.Histogram) -> bh.Histogram:
+        """Concrete results convert to the subclass's in-memory family (e.g. hist.Hist) when one
+        is declared via `_in_memory_type` — the hist.dask convention."""
+        cls = getattr(self, "_in_memory_type", None)
+        return result if cls is None else cls(result)
+
     def staged_fills(self) -> int:
         return len(self._fill_nodes)
 
@@ -235,11 +241,11 @@ class Histogram(bh.Histogram):
             total = zero_of(self._spec)
             for node in self._fill_nodes:
                 total = total + session.materialize(node)
-            return total
+            return self._wrap_result(total)
         plan = self.plan(steps_per_file=steps_per_file, backend=backend)
         runner = executor if executor is not None else SequentialRunner()
         result: bh.Histogram = runner.run(plan).value
-        return result
+        return self._wrap_result(result)
 
 
 def factory(
