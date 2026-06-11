@@ -15,8 +15,11 @@ tree-combine), and the reference ``session.materialize`` evaluates a fill eagerl
 are exact under any combine tree, float storages are deterministic per fixed-tree executor
 configuration.
 
+Start with :doc:`design` for the engineering walkthrough.
+
 .. toctree::
    :maxdepth: 2
 
+   design
    api
    improvements
