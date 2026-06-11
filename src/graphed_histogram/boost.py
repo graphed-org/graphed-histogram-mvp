@@ -80,13 +80,26 @@ def add_histograms(a: bh.Histogram, b: bh.Histogram) -> bh.Histogram:
     return a + b
 
 
+def _resolve_backend(ref: Callable[[], Any] | str) -> Any:
+    """A worker's evaluation backend: a zero-arg factory/class, or an importable "module:attr"
+    reference resolved HERE in the worker — behavior-carrying backends travel by import ref,
+    never by pickling (behavior dicts contain lambdas; losing them must be loud, not silent)."""
+    if isinstance(ref, str):
+        import importlib  # noqa: PLC0415
+
+        mod_name, _, attr = ref.partition(":")
+        target = getattr(importlib.import_module(mod_name), attr)
+        return target() if callable(target) else target
+    return ref()
+
+
 @dataclass(frozen=True)
 class _FillPartition:
     """One partition's work: read, evaluate every staged fill through the compiled IR, sum."""
 
     ir: bytes
     source_name: str
-    backend_factory: Callable[[], Any]
+    backend_factory: Callable[[], Any] | str
     reader: PartitionedSource
     evaluators: tuple[tuple[str, FillEvaluator], ...]
     spec: str
@@ -95,7 +108,7 @@ class _FillPartition:
         chunk = self.reader.read_partition(partition, None, resources)
         fills = evaluate_ir(
             self.ir,
-            self.backend_factory(),
+            _resolve_backend(self.backend_factory),
             {self.source_name: chunk},
             externals=dict(self.evaluators),
         )

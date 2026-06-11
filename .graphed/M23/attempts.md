@@ -37,3 +37,19 @@
 - frozen m23 respun under this authorization (executor/materialize idiom; same pins otherwise);
   freeze tag bumped freeze-M23-0 -> freeze-M23-1.
 - gates: 14/14 · coverage 94.85% · ruff/mypy/sphinx clean.
+
+## Iteration 3 — USER-DIRECTED process-boundary witnesses (freeze-M23-2) — 2026-06-11
+
+- USER: weighted fills are HEP's most common case; behavior loss plagued dask-awkward — control
+  both early. New frozen file test_process_executor_witnesses.py (+behavior_toy.py, an
+  importable toy behavior): a Weight-storage weighted fill through the SPAWNED process pool ==
+  sequential EXACTLY (values AND variances) == eager; a ragged awkward fill through the pool ==
+  its eager twin; a behavior-carrying session under the DEFAULT plan() FAILS LOUDLY in workers
+  (bare backend — behaviors are never silently dropped; pinned); and the supported path:
+  plan(backend="module:attr") — workers IMPORT the factory, no behavior dict is ever pickled —
+  reproduces the sequential result bit for bit.
+- Implementation: _resolve_backend (str refs resolved IN the worker); plan(backend=) accepts
+  factory/class OR "module:attr". Sanity: 3/4 witnesses passed pre-implementation (they pin
+  already-true behavior, including the loud failure); the import-ref test failed on the missing
+  feature. CI + dev deps gain graphed-awkward so the ragged/behavior witnesses run in CI.
+- gates: frozen 18/18 · coverage >=90 · ruff/mypy/sphinx clean.

@@ -29,6 +29,8 @@ dev = [
   "mypy",
   "ruff",
   "graphed-numpy",
+  "graphed-awkward",
+  "awkward>=2.6",
   "graphed-exec-local",
   "hist>=2.7",
 ]
@@ -42,7 +44,7 @@ packages = ["src/graphed_histogram"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "tests/frozen/m23"]
 addopts = "-q"
 
 [tool.coverage.run]
