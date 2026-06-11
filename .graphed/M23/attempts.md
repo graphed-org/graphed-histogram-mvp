@@ -25,3 +25,15 @@
   not in a `metadata=` kwarg — the canonical spec now captures/restores `__dict__` entries, so
   names and labels survive record -> compute -> wrap. Spec encode/rebuild remains a fixed point
   (pinned).
+
+## Iteration 2 — USER-DIRECTED: no compute() helper (graphed idiom) — 2026-06-11 (freeze-M23-1)
+
+- USER: "graphed has its own [idioms] ... we have materialize and the executors for that.
+  Remove compute() from graphed-histogram."
+- Histogram.compute() and the _wrap_result/_in_memory_type machinery are REMOVED. Evaluation is
+  graphed's: plan() (R15.4) + any R7 executor's run(plan).value IS the aggregated histogram;
+  the reference session.materialize(fill_node) evaluates one fill eagerly (multi-fill in-memory:
+  zero_of + add_histograms over per-fill materializes — pinned).
+- frozen m23 respun under this authorization (executor/materialize idiom; same pins otherwise);
+  freeze tag bumped freeze-M23-0 -> freeze-M23-1.
+- gates: 14/14 · coverage 94.85% · ruff/mypy/sphinx clean.

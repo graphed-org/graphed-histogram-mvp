@@ -1,8 +1,10 @@
 """graphed-histogram: deferred boost-histogram/hist filling on graphed task graphs (M23).
 
-The dask-histogram analogue: ``.fill(...)`` records an External node (content-addressed canonical
-axes/storage spec; backends know nothing about histograms), ``.compute()`` fills partition by
-partition through the compiled IR and tree-reduces by native histogram addition.
+The dask-histogram analogue with graphed's own evaluation idiom: ``.fill(...)`` records an
+External node (content-addressed canonical axes/storage spec; backends know nothing about
+histograms); ``plan()`` exports the R15.4 task graph an R7 executor aggregates (partition-wise
+through the compiled IR, native ``+`` tree-combine); the reference ``session.materialize``
+evaluates a fill eagerly.
 """
 
 from __future__ import annotations

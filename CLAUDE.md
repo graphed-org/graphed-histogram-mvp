@@ -14,16 +14,18 @@ cloudpickle; UHI in, UHI out, invent no formats). Backends know NOTHING about hi
 record through `record_external(descriptor=, form=)` (graphed M23) and evaluate through
 `evaluate_ir`'s `externals=` registry.
 
-Aggregation rides the M7/M8 seam: `compute()` builds a `Plan(process=fill-partition-through-the-
-compiled-IR, combine=histogram add, empty=zero-hist)`; sources implementing
-`graphed.write.PartitionedSource` are filled partition by partition (their whole-dataset loader
-is NEVER invoked); any R7 executor runs the plan; Int64 counts are exact under any combine tree,
-float storages are deterministic per fixed-tree executor configuration.
+Aggregation rides the M7/M8 seam with graphed's OWN evaluation idiom (no `compute()` helper —
+user-directed, 2026-06-11): `plan()` builds the `Plan(process=fill-partition-through-the-
+compiled-IR, combine=histogram add, empty=zero-hist)`; an R7 executor's `run(plan).value` IS the
+aggregated histogram; the reference `session.materialize(fill_node)` evaluates a fill eagerly.
+Sources implementing `graphed.write.PartitionedSource` are filled partition by partition (their
+whole-dataset loader is NEVER invoked); Int64 counts are exact under any combine tree, float
+storages are deterministic per fixed-tree executor configuration.
 
 ## Surface (dask-histogram parity)
 
 - `graphed_histogram.boost.Histogram` — deferred `boost_histogram.Histogram`: `.fill()` records
-  and returns self (multiple fills accumulate), `.compute()`, `.plan()`, `.to_boost()` zero.
+  and returns self (multiple fills accumulate); `.plan()` exports the task graph.
 - `factory(*arrays, histref=, weight=, sample=)`.
 - numpy-like `histogram` / `histogram2d` / `histogramdd`.
 - All standard boost storages (combine is native `+`); axes Regular/Variable/Integer/

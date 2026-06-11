@@ -1,11 +1,13 @@
 """M23 (graphed-histogram): deferred boost-histogram filling on graphed task graphs (P0.1).
 
 `.fill(...)` RECORDS — an External node carrying the content-addressed canonical axes/storage
-spec (the M3 correctionlib/ONNX family; backends know nothing about histograms). `.compute()`
-fills partition by partition through the compiled IR (a partitioned source's whole-dataset
-loader is NEVER invoked — counter-witnessed) and tree-reduces per-partition histograms; counts
-are pinned BIT FOR BIT against eager boost-histogram; multiple fills accumulate; the
-compute-disabled plan run later equals compute (R15.4); same axes spec => one interned node.
+spec (the M3 correctionlib/ONNX family; backends know nothing about histograms). Evaluation is
+graphed's own machinery [freeze-M23-1, user-directed: there is NO compute() helper]: `plan()`
+exports the R15.4 task graph and an R7 executor's `run(plan).value` IS the aggregated histogram
+(partition-wise through the compiled IR; the whole-dataset loader NEVER invoked —
+counter-witnessed); the reference `session.materialize(fill_node)` evaluates a fill eagerly.
+Counts are pinned BIT FOR BIT against eager boost-histogram; multiple fills accumulate; same
+axes spec => one interned node.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import boost_histogram as bh
 import numpy as np
 import pytest
 from graphed import Array, Session
+from graphed.write import SequentialRunner
 from graphed_core import Partition
 from graphed_numpy import NumpyBackend
 from graphed_numpy.forms import NumpyForm
@@ -35,7 +38,7 @@ class ChunkedSource:
     whole_calls: list = field(default_factory=list)
     part_reads: list = field(default_factory=list)
 
-    def __call__(self) -> np.ndarray:  # the whole-dataset loader: must NEVER run during compute
+    def __call__(self) -> np.ndarray:  # the whole-dataset loader: must NEVER run during a plan
         self.whole_calls.append(1)
         return self.data
 
@@ -59,16 +62,16 @@ def test_fill_records_instead_of_executing() -> None:
     x, src = _source(s, "x", DATA)
     h = gh.boost.Histogram(bh.axis.Regular(20, 0.0, 10.0))
     out = h.fill(x)
-    assert out is h  # dask-histogram semantics: fill stages and returns self
+    assert out is h  # fill stages and returns self
     assert src.whole_calls == [] and src.part_reads == []  # nothing read, nothing computed
     assert h.staged_fills() == 1
 
 
-def test_compute_matches_eager_boost_bit_for_bit() -> None:
+def test_executor_aggregation_matches_eager_boost_bit_for_bit() -> None:
     s = Session(NumpyBackend())
     x, src = _source(s, "x", DATA)
     h = gh.boost.Histogram(bh.axis.Regular(20, 0.0, 10.0), storage=bh.storage.Int64()).fill(x)
-    got = h.compute(steps_per_file=4)
+    got = SequentialRunner().run(h.plan(steps_per_file=4)).value  # an R7 executor aggregates
     eager = bh.Histogram(bh.axis.Regular(20, 0.0, 10.0), storage=bh.storage.Int64())
     eager.fill(DATA)
     assert np.array_equal(got.values(), eager.values())
@@ -82,7 +85,7 @@ def test_multiple_fills_accumulate() -> None:
     x, _src = _source(s, "x", DATA)
     h = gh.boost.Histogram(bh.axis.Regular(10, 0.0, 10.0), storage=bh.storage.Int64())
     h.fill(x).fill(x * 0.5 + 1.0)
-    got = h.compute(steps_per_file=3)
+    got = SequentialRunner().run(h.plan(steps_per_file=3)).value
     eager = bh.Histogram(bh.axis.Regular(10, 0.0, 10.0), storage=bh.storage.Int64())
     eager.fill(DATA)
     eager.fill(DATA * 0.5 + 1.0)
@@ -96,13 +99,13 @@ def test_weighted_fill_with_weight_storage() -> None:
     with pytest.raises(TypeError, match="one partitioned source"):
         gh.boost.Histogram(bh.axis.Regular(10, 0.0, 10.0), storage=bh.storage.Weight()).fill(
             x, weight=w
-        ).compute()
+        ).plan()
     # weight from the SAME source's record is fine
     s2 = Session(NumpyBackend())
     x2, _ = _source(s2, "x", DATA)
     h = gh.boost.Histogram(bh.axis.Regular(10, 0.0, 10.0), storage=bh.storage.Weight())
     h.fill(x2, weight=np.sqrt(abs(x2)))
-    got = h.compute(steps_per_file=2)
+    got = SequentialRunner().run(h.plan(steps_per_file=2)).value
     eager = bh.Histogram(bh.axis.Regular(10, 0.0, 10.0), storage=bh.storage.Weight())
     eager.fill(DATA, weight=np.sqrt(abs(DATA)))
     assert np.allclose(got.values(), eager.values())
@@ -123,7 +126,7 @@ def test_multidimensional_and_categorical_axes() -> None:
         storage=bh.storage.Int64(),
     )
     eager2.fill(DATA, DATA * 0.9)
-    assert np.array_equal(h2.compute(steps_per_file=2).values(), eager2.values())
+    assert np.array_equal(SequentialRunner().run(h2.plan(steps_per_file=2)).value.values(), eager2.values())
 
     s3 = Session(NumpyBackend())
     cats = (DATA > 5.0).astype("int64") + 2 * (DATA > 7.0).astype("int64")
@@ -131,7 +134,7 @@ def test_multidimensional_and_categorical_axes() -> None:
     h3 = gh.boost.Histogram(bh.axis.IntCategory([0, 1, 2]), storage=bh.storage.Int64()).fill(c3)
     eager3 = bh.Histogram(bh.axis.IntCategory([0, 1, 2]), storage=bh.storage.Int64())
     eager3.fill(cats)
-    assert np.array_equal(h3.compute().values(), eager3.values())
+    assert np.array_equal(SequentialRunner().run(h3.plan()).value.values(), eager3.values())
 
 
 def test_content_addressed_identity_is_hash_consed() -> None:
@@ -145,34 +148,38 @@ def test_content_addressed_identity_is_hash_consed() -> None:
     assert gh.spec_of(h1) == gh.spec_of(h2) and gh.spec_of(h1) != gh.spec_of(h3)
 
 
-def test_disabled_plan_runs_later_and_matches_compute() -> None:
+def test_plan_aggregates_identically_across_executors() -> None:
     pytest.importorskip("graphed_exec_local")
     from graphed_exec_local import ProcessExecutor  # noqa: PLC0415  (importorskip-gated)
 
     s = Session(NumpyBackend())
     x, _ = _source(s, "x", DATA)
     h = gh.boost.Histogram(bh.axis.Regular(16, 0.0, 10.0), storage=bh.storage.Int64()).fill(abs(x))
-    direct = h.compute(steps_per_file=3)
-    plan = h.plan(steps_per_file=3)
-    later = ProcessExecutor(max_workers=2).run(plan).value
-    assert np.array_equal(np.asarray(later.values()), np.asarray(direct.values()))  # R15.4
-    assert later.sum(flow=True) == direct.sum(flow=True)
+    sequential = SequentialRunner().run(h.plan(steps_per_file=3)).value
+    parallel = ProcessExecutor(max_workers=2).run(h.plan(steps_per_file=3)).value
+    assert np.array_equal(np.asarray(parallel.values()), np.asarray(sequential.values()))  # R15.4
+    assert parallel.sum(flow=True) == sequential.sum(flow=True)
 
 
-def test_in_memory_sources_compute_via_materialize() -> None:
+def test_in_memory_sources_evaluate_via_the_reference_materialize() -> None:
     s = Session(NumpyBackend())
     arr = s.source("m", form=NumpyForm(DATA.dtype, shape=(None,)), data=DATA)  # plain array data
     h = gh.boost.Histogram(bh.axis.Regular(12, 0.0, 10.0), storage=bh.storage.Int64()).fill(arr)
+    h.fill(arr * 0.5)  # multi-fill: zero + sum of per-fill materializes (the monoid helpers)
+    total = gh.zero_of(gh.spec_of(h))
+    for node in h.fill_nodes():
+        total = gh.add_histograms(total, s.materialize(node))
     eager = bh.Histogram(bh.axis.Regular(12, 0.0, 10.0), storage=bh.storage.Int64())
     eager.fill(DATA)
-    assert np.array_equal(h.compute().values(), eager.values())
+    eager.fill(DATA * 0.5)
+    assert np.array_equal(total.values(), eager.values())
 
 
 def test_numpy_like_entry_points() -> None:
     s = Session(NumpyBackend())
     x, _ = _source(s, "x", DATA)
     h = gh.histogram(x, bins=25, range=(0.0, 10.0))
-    counts = np.asarray(h.compute(steps_per_file=2).values())
+    counts = np.asarray(SequentialRunner().run(h.plan(steps_per_file=2)).value.values())
     ref, _edges = np.histogram(DATA, bins=25, range=(0.0, 10.0))
     assert np.array_equal(counts.astype("int64"), ref)
 
@@ -180,7 +187,9 @@ def test_numpy_like_entry_points() -> None:
     x2, _ = _source(s2, "x", DATA)
     h2 = gh.histogram2d(x2, x2 * 0.5, bins=(10, 8), range=((0.0, 10.0), (0.0, 5.0)))
     ref2, _, _ = np.histogram2d(DATA, DATA * 0.5, bins=(10, 8), range=((0.0, 10.0), (0.0, 5.0)))
-    assert np.array_equal(np.asarray(h2.compute().values()).astype("int64"), ref2.astype("int64"))
+    assert np.array_equal(
+        np.asarray(SequentialRunner().run(h2.plan()).value.values()).astype("int64"), ref2.astype("int64")
+    )
 
 
 def test_ir_is_deterministic_and_carries_the_descriptor() -> None:
@@ -211,13 +220,15 @@ def test_factory_and_histogramdd_match_eager() -> None:
     h = gh.factory(x, histref=href)
     eager = bh.Histogram(bh.axis.Regular(14, 0.0, 10.0), storage=bh.storage.Int64())
     eager.fill(DATA)
-    assert np.array_equal(h.compute(steps_per_file=2).values(), eager.values())
+    assert np.array_equal(SequentialRunner().run(h.plan(steps_per_file=2)).value.values(), eager.values())
 
     s2 = Session(NumpyBackend())
     x2, _ = _source(s2, "x", DATA)
     hdd = gh.histogramdd([x2, x2 * 0.5], bins=[6, 5], range=((0.0, 10.0), (0.0, 5.0)))
     refdd, _ = np.histogramdd([DATA, DATA * 0.5], bins=[6, 5], range=((0.0, 10.0), (0.0, 5.0)))
-    assert np.array_equal(np.asarray(hdd.compute().values()).astype("int64"), refdd.astype("int64"))
+    assert np.array_equal(
+        np.asarray(SequentialRunner().run(hdd.plan()).value.values()).astype("int64"), refdd.astype("int64")
+    )
 
 
 def test_spec_round_trips_every_supported_axis_and_storage() -> None:
@@ -244,7 +255,7 @@ def test_guardrails_fail_loudly() -> None:
     with pytest.raises(TypeError, match="graphed Arrays"):
         h.fill(DATA)  # eager data is not a deferred fill
     with pytest.raises(ValueError, match="nothing staged"):
-        gh.boost.Histogram(bh.axis.Regular(4, 0.0, 1.0)).compute()
+        gh.boost.Histogram(bh.axis.Regular(4, 0.0, 1.0)).plan()
     with pytest.raises(TypeError, match="growth"):
         gh.spec_of(bh.Histogram(bh.axis.IntCategory([], growth=True)))
     s2 = Session(NumpyBackend())

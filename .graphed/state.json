@@ -4,7 +4,7 @@
     "M23": {
       "dispute_count": 0,
       "escalated": false,
-      "freeze_tag": "freeze-M23-0",
+      "freeze_tag": "freeze-M23-1",
       "gates": {
         "benchmark": null,
         "coverage": true,
@@ -37,5 +37,5 @@
       "reject_count": 0
     }
   },
-  "updated_at": "2026-06-10T23:13:11Z"
+  "updated_at": "2026-06-11T13:18:31Z"
 }

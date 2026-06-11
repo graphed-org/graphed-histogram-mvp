@@ -1,14 +1,14 @@
-"""The deferred ``boost_histogram.Histogram`` — fills RECORD, ``compute()`` aggregates.
+"""The deferred ``boost_histogram.Histogram`` — fills RECORD; executors aggregate.
 
 Each ``.fill(...)`` records one External node (the M3 correctionlib/ONNX family) whose evaluator
 returns a FILLED boost histogram for its chunk; the node's identity is the content hash of the
-canonical axes/storage spec plus its inputs, so identical fills intern. ``compute()`` picks the
-path by the source's nature: a ``graphed.write.PartitionedSource`` is filled partition by
-partition through the COMPILED IR (the whole-dataset loader is never invoked) and the
-per-partition histograms tree-reduce by native ``+``; plain in-memory sources evaluate through
-the reference ``materialize``. Histograms add as a monoid, so any R7 executor runs the plan —
-Int64 counts are exact under any combine tree; float storages are deterministic per fixed-tree
-executor configuration.
+canonical axes/storage spec plus its inputs, so identical fills intern. Evaluation is graphed's
+own machinery — there is no ``compute()`` here: ``plan()`` exports the R15.4 task graph (one
+fill task per partition over a ``graphed.write.PartitionedSource``; the whole-dataset loader is
+never invoked) whose tree-combine is native ``+``, and ANY R7 executor's ``run(plan).value`` IS
+the aggregated histogram; the reference ``session.materialize(fill_node)`` evaluates a fill
+eagerly. Int64 counts are exact under any combine tree; float storages are deterministic per
+fixed-tree executor configuration.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Any
 import boost_histogram as bh
 import numpy as np
 from graphed import Array, compile_ir, evaluate_ir
-from graphed.write import PartitionedSource, SequentialRunner
+from graphed.write import PartitionedSource
 from graphed_core import Partition, PayloadDescriptor
 from graphed_core.execution import Plan, Task, WorkerResources
 
@@ -108,9 +108,12 @@ class _FillPartition:
 class Histogram(bh.Histogram):
     """A ``boost_histogram.Histogram`` whose fills are DEFERRED graphed computations.
 
-    ``fill`` records and returns ``self`` (fills accumulate); ``compute`` aggregates;
-    ``plan`` exports the compute-disabled task graph for any R7 executor (R15.4 semantics).
-    The eager boost API (axes, storage, views of the EMPTY state) remains available.
+    ``fill`` records and returns ``self`` (fills accumulate). Evaluation is graphed's, not a
+    method of this class: ``plan()`` exports the compute-disabled task graph (R15.4) for any R7
+    executor — the executor's result IS the aggregated histogram — and the reference
+    ``session.materialize(fill_node)`` evaluates one fill eagerly (an in-memory source's whole
+    dataset in one chunk). The eager boost API (axes, storage, views of the EMPTY state) remains
+    available.
     """
 
     def __init__(self, *axes: Any, storage: Any = None, metadata: Any = None) -> None:
@@ -172,12 +175,6 @@ class Histogram(bh.Histogram):
         self._evaluators[chash] = evaluator
         return self
 
-    def _wrap_result(self, result: bh.Histogram) -> bh.Histogram:
-        """Concrete results convert to the subclass's in-memory family (e.g. hist.Hist) when one
-        is declared via `_in_memory_type` — the hist.dask convention."""
-        cls = getattr(self, "_in_memory_type", None)
-        return result if cls is None else cls(result)
-
     def staged_fills(self) -> int:
         return len(self._fill_nodes)
 
@@ -214,7 +211,10 @@ class Histogram(bh.Histogram):
         histogram addition. Run it later with any R7 executor."""
         session, nid, data = self._session_and_source()
         if not isinstance(data, PartitionedSource):
-            raise TypeError("plan() needs a partitioned source; in-memory sources compute() directly")
+            raise TypeError(
+                "plan() needs a partitioned source; evaluate in-memory sources with the "
+                "reference session.materialize on each fill node"
+            )
         compiled = compile_ir(session, *self._fill_nodes)
         process = _FillPartition(
             ir=bytes(compiled.ir),
@@ -227,25 +227,6 @@ class Histogram(bh.Histogram):
         partitions = data.partitions(steps_per_file)
         tasks = tuple(Task(i, p) for i, p in enumerate(partitions))
         return Plan(process=process, combine=add_histograms, empty=_ZeroHist(self._spec), tasks=tasks)
-
-    def compute(
-        self,
-        *,
-        steps_per_file: int = 1,
-        executor: Any | None = None,
-        backend: Callable[[], Any] | None = None,
-    ) -> bh.Histogram:
-        """Aggregate the staged fills into a CONCRETE boost histogram."""
-        session, _nid, data = self._session_and_source()
-        if data is None:  # in-memory: the reference materialize evaluates each fill eagerly
-            total = zero_of(self._spec)
-            for node in self._fill_nodes:
-                total = total + session.materialize(node)
-            return self._wrap_result(total)
-        plan = self.plan(steps_per_file=steps_per_file, backend=backend)
-        runner = executor if executor is not None else SequentialRunner()
-        result: bh.Histogram = runner.run(plan).value
-        return self._wrap_result(result)
 
 
 def factory(
