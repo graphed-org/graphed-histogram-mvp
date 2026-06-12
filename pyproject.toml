@@ -33,7 +33,8 @@ dev = [
   "awkward>=2.6",
   "graphed-exec-local",
   "hist>=2.7",
-, "pyarrow"]
+  "pyarrow",
+]
 docs = ["sphinx", "furo"]
 
 [project.urls]
