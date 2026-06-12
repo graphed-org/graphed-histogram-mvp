@@ -24,3 +24,16 @@
   but not in this repo's CI install. pyarrow added to the dev extra (the frozen test is
   untouched). Lesson: a green local sweep validates code, not CI environments — new frozen
   tests must declare their dependencies in the repo they land in.
+
+## Iteration 2 — 2026-06-12 (freeze-M29-1)
+
+- CI round 2: ak.to_parquet routes through pyarrow's PANDAS SHIM -> ModuleNotFoundError in CI
+  (pandas exists locally only; this ecosystem is deliberately pandas-free). FREEZE AMENDMENT
+  (sanctioned, dispute-correction path): the plan-path test's fixture now writes parquet via
+  pure pyarrow (pq.write_table) — the assertions are byte-identical, only the fixture I/O
+  changed. Re-frozen as freeze-M29-1.
+- Iteration 1's pyarrow dev-dep edit ALSO shipped invalid TOML (a regex grabbed the wrong
+  bracket; the tomllib check ran but its failure was swallowed by statement chaining). Both
+  failure modes are now ENCODED in graphed-orchestrator's new pre-commit gate
+  (python -m graphed_orchestrator.precommit, commit 4f0abf5), which gated THIS commit:
+  toml-valid ok, integrity-scan REFREEZE:tests/frozen/m29/... (loud, sanctioned), full suite ok.

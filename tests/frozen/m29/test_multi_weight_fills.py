@@ -58,9 +58,13 @@ def test_two_weights_multiply_via_materialize() -> None:
 def test_two_weights_multiply_through_the_plan_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
     # the executor path needs a PARTITIONED source: fill from a parquet dataset
     import graphed_awkward as gha  # noqa: PLC0415
+    import pyarrow as pa  # noqa: PLC0415
+    import pyarrow.parquet as pq  # noqa: PLC0415
 
     path = tmp_path / "events.parquet"
-    ak.to_parquet(EVENTS, path)
+    # pure-pyarrow write: ak.to_parquet routes through pyarrow's pandas shim, and this
+    # ecosystem is deliberately pandas-free
+    pq.write_table(pa.table({n: np.asarray(EVENTS[n]) for n in ("x", "w1", "w2")}), path)
     s = Session(AwkwardBackend())
     g = gha.io.from_parquet(s, "events", str(path))
     h = gh.boost.Histogram(bh.axis.Regular(4, 0.0, 8.0), storage=bh.storage.Weight())
