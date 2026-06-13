@@ -15,8 +15,8 @@ import awkward as ak
 import boost_histogram as bh
 import numpy as np
 from graphed import Session
-from graphed.write import SequentialRunner
 from graphed_awkward import AwkwardBackend, from_awkward
+from graphed_core.execution import SequentialRunner
 
 import graphed_histogram as gh
 

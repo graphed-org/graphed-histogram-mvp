@@ -23,7 +23,7 @@ The deferred histogram in one example
 
     import boost_histogram as bh
     import graphed_histogram as gh
-    from graphed.write import SequentialRunner
+    from graphed_core.execution import SequentialRunner
 
     h = gh.boost.Histogram(bh.axis.Regular(20, 0.0, 10.0), storage=bh.storage.Int64())
     h.fill(x)                  # x is a graphed Array: RECORDS a fill node, returns h

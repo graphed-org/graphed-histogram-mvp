@@ -20,8 +20,8 @@ import boost_histogram as bh
 import numpy as np
 import pytest
 from graphed import Session
-from graphed.write import SequentialRunner
 from graphed_core import Partition
+from graphed_core.execution import SequentialRunner
 
 import graphed_histogram as gh
 

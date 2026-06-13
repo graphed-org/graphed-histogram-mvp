@@ -18,8 +18,8 @@ import boost_histogram as bh
 import numpy as np
 import pytest
 from graphed import Array, Session
-from graphed.write import SequentialRunner
 from graphed_core import Partition
+from graphed_core.execution import SequentialRunner
 from graphed_numpy import NumpyBackend
 from graphed_numpy.forms import NumpyForm
 
