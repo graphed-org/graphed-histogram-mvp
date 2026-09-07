@@ -812,7 +812,7 @@ def _refuse_shortfall(items: Sequence[tuple[str, Histogram]], marked: int, compi
     )
     workaround = (
         " Spell a label whose value equals another's with the SAME expression "
-        '(variations={"1": w}, not w * 1.0), which routes it through the supported '
+        '(points={"1": w}, not w * 1.0), which routes it through the supported '
         "record-time dedup instead."
         if any(len(labels) > 1 for _name, _hist, labels in culprits)
         else ""

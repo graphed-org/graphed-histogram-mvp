@@ -246,7 +246,7 @@ def jer_program() -> tuple[Session, Any, dict[str, dict[str, Array]], Array, Cou
         * (1.0 + float(np.sqrt(max(JER_SF[f"jer_{tag}"] ** 2 - 1.0, 0.0))) * content_seeded_normal(pt))
         for tag in ("up", "down")
     }
-    smeared = graphed.vary(pt, "jer", variations=members)  # nominal is UNSMEARED (§5.5b)
+    smeared = graphed.vary(pt, "jer", points=members)  # nominal is UNSMEARED (§5.5b)
 
     per_label: dict[str, dict[str, Array]] = {}
     for label in graphed.labels(smeared):

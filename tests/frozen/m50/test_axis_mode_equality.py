@@ -27,10 +27,21 @@ from m50_axis_fixtures import (
 import graphed_histogram as gh
 
 #: `S` = labels that lower as siblings (borne by an axis value or a `Varied` sample=); `W` = labels
-#: borne only by weight factors, which collapse into the loop. The mixed program's split.
-MIXED_LABELS = ("nominal", "jes_up", "jes_down", "wgt_up", "wgt_down", "smp_up", "smp_down")
-SIBLINGS = ("jes_up", "jes_down", "smp_up", "smp_down")  # S
+#: borne only by weight factors, which collapse into the loop. The mixed program's split. `smp` is
+#: registered on the jes-shifted b-tag, so the dependency fanout places the joint `smp x jes`
+#: universes in `S` alongside the independent ones.
+SIBLINGS = (
+    "jes_up",
+    "jes_down",
+    "smp_up",
+    "smp_down",
+    "smp_up__jes_up",
+    "smp_up__jes_down",
+    "smp_down__jes_up",
+    "smp_down__jes_down",
+)  # S
 WEIGHTS = ("wgt_up", "wgt_down")  # W
+MIXED_LABELS = ("nominal", *SIBLINGS, *WEIGHTS)
 
 
 def _axis_result(program_fn) -> object:
@@ -64,8 +75,8 @@ def test_the_weight_equality_is_not_vacuous() -> None:
 
 def test_mixed_shift_weight_sample_axis_equals_the_sibling_decomposition() -> None:
     """WeightedMean storage, a shift (`S`), a weight (`W`) and a sample-only variation (`S`) with
-    per-label sample values that DIFFER: the single axis-mode histogram equals the seven-way sibling
-    decomposition label-by-label."""
+    per-label sample values that DIFFER: the single axis-mode histogram equals the sibling
+    decomposition label-by-label, the joint `smp x jes` universes included."""
     axis = _axis_result(fill_mixed_program)
     sibling = _sibling_result(fill_mixed_program)
     assert set(sibling) == set(MIXED_LABELS)
@@ -76,13 +87,13 @@ def test_mixed_shift_weight_sample_axis_equals_the_sibling_decomposition() -> No
 def test_a_sample_only_label_lowers_as_a_sibling_not_into_the_loop() -> None:
     """§6.1b's `S`/`W` split, observable only in axis mode: `smp_*` is borne solely by a `Varied`
     sample= and must lower as a SIBLING (the loop re-fills against a FIXED sample column). Axis
-    arity is `1 + |S|` = 5; misclassing either `smp` label into `W` would drop it to 3."""
+    arity is `1 + |S|`; misclassing the `smp` labels into `W` would drop every universe they bear."""
     _s, events = in_memory()
     axis = fill_mixed_program(True, source=events)
     _s2, events2 = in_memory()
     sibling = fill_mixed_program(False, source=events2)
-    assert axis.staged_fills() == 1 + len(SIBLINGS)  # 5: the weight loop plus |S| sibling nodes
-    assert sibling.staged_fills() == 1 + len(SIBLINGS) + len(WEIGHTS)  # 7: no collapse in sibling mode
+    assert axis.staged_fills() == 1 + len(SIBLINGS)  # the weight loop plus |S| sibling nodes
+    assert sibling.staged_fills() == 1 + len(SIBLINGS) + len(WEIGHTS)  # no collapse in sibling mode
 
 
 def test_axis_mode_fill_nodes_carry_distinct_evaluators() -> None:

@@ -63,7 +63,7 @@ Authority: `systematics-vary-plan.md` r33. Section references in the files are t
 | `graphed_histogram.fill_nodes_by_label(h)` | `dict[str, Array]`, label order per §2.4 (nominal first) |
 | `graphed_histogram.plan(...)` value | flat `{output: hist}` for an output no variation reaches, `{(output, label): hist}` for a varied sibling output |
 | `Histogram.fill(..., unweighted=True)` | suppresses the ambient weight AND every explicit `weight=[…]` factor |
-| the `.plan()` and merge-shortfall refusals | `graphed.GraphedError`; `.plan()`'s message names `graphed_histogram.plan`, the shortfall's names the output, the labels and `variations=` |
+| the `.plan()` and merge-shortfall refusals | `graphed.GraphedError`; `.plan()`'s message names `graphed_histogram.plan`, the shortfall's names the output, the labels and `points=` |
 | §6.1d's execution-time length messages | ambient offender: contains `ambient` + `pass the value unflattened`; explicit offender: contains `weight[<i>]` for the offending index + `pass the value unflattened`; loose-value offender: contains `value[<i>]` and NEITHER of the other two |
 
 ## Fixtures
