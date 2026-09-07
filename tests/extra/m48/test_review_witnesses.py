@@ -150,7 +150,7 @@ def test_a_merge_inside_an_unvaried_sibling_names_that_sibling() -> None:
     message = str(excinfo.value)
     assert "merging" in message
     assert "varied carries" not in message
-    assert "variations=" not in message, "the workaround does not apply to an unvaried output"
+    assert "points=" not in message, "the workaround does not apply to an unvaried output"
 
 
 # --- A5: ancestor-context weight factors are re-indexed ----------------------------------------

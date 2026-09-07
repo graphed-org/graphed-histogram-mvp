@@ -11,13 +11,17 @@ label — borne by the ambient b-tag weight — has to leave that loop (or the l
 resolved member) for its shifted kinematics to reach the fill at all.
 
 Parity alone would also be satisfied by two identically-wrong modes, so each mode is separately
-witnessed to have moved the joint universe off the b-tag-only one before the two are compared.
+witnessed to resolve the joint's axis value to the shifted member before the two are compared. That
+witness has to be STRUCTURAL: the joint's ambient b-tag weight is already a different node from
+`btag_hf_up`'s, so the executed inequality between those two labels holds even when the axis value
+wrongly resolves to nominal.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
+import graphed
 from m52_joint_fill_fixtures import (
     BTAG_ONLY,
     JOINT,
@@ -26,6 +30,7 @@ from m52_joint_fill_fixtures import (
     execute,
     in_memory,
     joint_context,
+    observable,
     other_inputs,
     partitioned,
     slice_label,
@@ -34,6 +39,26 @@ from m52_joint_fill_fixtures import (
 )
 
 import graphed_histogram as gh
+
+
+class Recorded(NamedTuple):
+    """One mode's recorded axis-value member per label, beside the two named candidates."""
+
+    axis_member: dict[str, list[int]]
+    shifted: list[int]
+    nominal: list[int]
+
+
+def _recorded(*, axis_mode: bool) -> Recorded:
+    session, events = in_memory()
+    context = joint_context(events)
+    obs = observable(context)
+    by_label = gh.fill_nodes_by_label(three_role_fill(context, axis_mode=axis_mode))
+    return Recorded(
+        axis_member={label: axis_inputs(session, node) for label, node in by_label.items()},
+        shifted=[graphed.universe(obs, "jes_up").node_id],
+        nominal=[graphed.nominal(obs).node_id],
+    )
 
 
 def _sibling() -> dict[str, Any]:
@@ -58,9 +83,21 @@ def test_the_fill_carries_all_three_operand_roles() -> None:
 
 
 def test_each_mode_moves_the_joint_universe_off_the_btag_only_one() -> None:
-    """Per mode, the mechanism witness: the joint universe is neither the b-tag-only universe (the
-    silent-nominal signature) nor the pure JES one. Without this, the parity anchor below would pass
-    on an implementation that left BOTH modes on the old rule."""
+    """Per mode, the mechanism witness. Without it the parity anchor below would pass on an
+    implementation that left BOTH modes on the old rule.
+
+    The structural half is the one that isolates §5.1: the joint's AXIS VALUE is the observable's
+    shifted member in each mode, the b-tag-only label's is nominal. In axis mode that is the joint
+    leaving the nominal weight loop — its recorded node is the shifted group's. The executed half
+    only adds that each mode ran three distinct universes end to end; the fanout gives the joint its
+    own ambient weight member, so those inequalities survive a wrong axis value and cannot stand in
+    for the structural half."""
+    for axis_mode in (False, True):
+        recorded = _recorded(axis_mode=axis_mode)
+        assert recorded.shifted != recorded.nominal, "the candidate axis members must be distinct"
+        assert recorded.axis_member[JOINT] == recorded.shifted, axis_mode
+        assert recorded.axis_member[BTAG_ONLY] == recorded.nominal, axis_mode
+
     sibling = _sibling()
     assert not views_equal(sibling[JOINT], sibling[BTAG_ONLY]), "sibling mode"
     assert not views_equal(sibling[JOINT], sibling["jes_up"]), "sibling mode"

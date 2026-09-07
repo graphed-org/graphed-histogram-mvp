@@ -63,7 +63,7 @@ def test_no_second_implementation_of_the_fallback_rule_exists(tmp_path: Path) ->
         assert _hits(directory) == [("control.py", 1, line)]
 
     _session, events = in_memory()
-    observable_ = observable(joint_context(events, register_point=False))
+    observable_ = observable(joint_context(events, select_joint=False))
     counts = gak.num(events.Jet, axis=1) * 1.0
     varied = graphed.vary(counts, "jer", up=counts * 2.0)
     assert graphed.member_of(varied, "no_such_label") is graphed.nominal(varied)

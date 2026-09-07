@@ -5,18 +5,20 @@ Self-contained: the sibling m48/m49/m50 helper dirs are not on `pythonpath`, and
 module from binding — or being bound as — another milestone's helper.
 
 The program is the single-carrier shape §4.11-4 admits: a `jes` SHIFT registered on the event
-context, then a `btag` WEIGHT family over the SHIFTED jets whose third tag carries the two-coordinate
-point `{btag: hf_up, jes: up}`. The joint point is registered through the shift-form carrier — the
-loose form carries no `jes` tag at all, and the reachability check refuses a coordinate no carrier
-registers.
+context, then a `btag` WEIGHT family whose members are computed over the SHIFTED jets. That
+dependency is what makes the family fan out: `graphed.vary` mints the full `jes` x `btag` grid, so
+the two-coordinate universe `{btag: hf_up, jes: up}` exists under the machine label
+`btag_hf_up__jes_up` with no tag of its own. A `points=` PLACEMENT entry selects that one joint and
+prunes its siblings, leaving the one-at-a-time union untouched.
 
-`hf_up` is bound ONCE and passed as the member of both `hf_up` and `jesup_hf_up`, so the two labels
-enter the fill with the same recorded SF expression and the joint universe's kinematics are the only
-thing that can distinguish them.
+`btag_hf_up` and the joint come from the same `hf_up` member expression re-resolved at each `jes`
+coordinate, so their ambient WEIGHT members are already DIFFERENT nodes. An executed inequality
+between the two labels therefore does not separate a correct axis-value resolution from one that
+kept nominal kinematics — C5 has to be read off the axis-value member structurally.
 
-The oracle is eager awkward: each universe is `(jes scale, SF coefficient)`, and the JOINT row is
-the design's claim that BOTH coordinates apply. `test_joint_fill_resolution` validates the oracle
-against the one-at-a-time universes in the same run before leaning on the joint row.
+The oracle is eager awkward: each universe is `(jes scale, SF coefficient)`, and a JOINT row carries
+BOTH coordinates. `test_joint_fill_resolution` validates the oracle against the unpruned grid in the
+same run before leaning on the pruned program's joint row.
 """
 
 from __future__ import annotations
@@ -48,12 +50,27 @@ SF_CENTRAL = 0.02
 SF_HF_UP = 0.05
 SF_HF_DOWN = -0.01
 
-JOINT = "btag_jesup_hf_up"
+JOINT = "btag_hf_up__jes_up"
 JOINT_POINT = {"btag": "hf_up", "jes": "up"}
 BTAG_ONLY = "btag_hf_up"
-LABELS = ("nominal", "jes_up", "jes_down", BTAG_ONLY, "btag_hf_down", JOINT)
 
-#: `(jes scale, per-jet SF coefficient)` per universe. The JOINT row carries BOTH coordinates: the
+#: the one-at-a-time union: nominal, the shift's own labels and the b-tag family's, all of which the
+#: fanout leaves untouched whether or not a placement prunes the joints
+BASE_LABELS = ("nominal", "jes_up", "jes_down", BTAG_ONLY, "btag_hf_down")
+
+#: what the placement leaves standing — the union plus the ONE selected joint
+LABELS = (*BASE_LABELS, JOINT)
+
+#: the unpruned fanout: the union plus every `btag` x `jes` joint, in `graphed.labels` order
+GRID_LABELS = (
+    *BASE_LABELS,
+    JOINT,
+    "btag_hf_up__jes_down",
+    "btag_hf_down__jes_up",
+    "btag_hf_down__jes_down",
+)
+
+#: `(jes scale, per-jet SF coefficient)` per universe. A JOINT row carries BOTH coordinates: the
 #: shifted kinematics AND the heavy-flavour SF evaluated at the shifted pT.
 UNIVERSE = {
     "nominal": (1.0, SF_CENTRAL),
@@ -62,6 +79,9 @@ UNIVERSE = {
     BTAG_ONLY: (1.0, SF_HF_UP),
     "btag_hf_down": (1.0, SF_HF_DOWN),
     JOINT: (JES_UP, SF_HF_UP),
+    "btag_hf_up__jes_down": (JES_DOWN, SF_HF_UP),
+    "btag_hf_down__jes_up": (JES_UP, SF_HF_DOWN),
+    "btag_hf_down__jes_down": (JES_DOWN, SF_HF_DOWN),
 }
 
 AXIS = bh.axis.Regular(40, 0, 800)
@@ -106,11 +126,12 @@ def _sf(jets: Any, coeff: float) -> Any:
     return gak.prod(1.0 + coeff * (jets.pt / 100.0), axis=1)
 
 
-def joint_context(source: Any, *, register_point: bool = True) -> Any:
-    """`jes` shift ⊗ `btag` weight family, the third b-tag tag naming the joint point.
+def joint_context(source: Any, *, select_joint: bool = True) -> Any:
+    """`jes` shift ⊗ a `btag` weight family computed over the shifted jets, so the family fans out.
 
-    `register_point=False` drops the `points=` keyword entirely, leaving the same six labels with
-    default points — the shape the eager oracle is validated against.
+    `select_joint=True` adds the `JOINT_POINT` placement, which prunes the grid to `LABELS`;
+    `select_joint=False` declares through the plain mapping channel and leaves the whole
+    `GRID_LABELS` fanout — the shape the eager oracle is validated against.
     """
     jets = source.Jet
     shifted = graphed.vary(
@@ -122,15 +143,14 @@ def joint_context(source: Any, *, register_point: bool = True) -> Any:
         },
     )
     sjets = shifted.Jet
-    hf_up = _sf(sjets, SF_HF_UP)
-    extra = {"points": {"jesup_hf_up": dict(JOINT_POINT)}} if register_point else {}
+    declares = {"hf_up": _sf(sjets, SF_HF_UP), "hf_down": _sf(sjets, SF_HF_DOWN)}
+    points: Any = [*declares.items(), dict(JOINT_POINT)] if select_joint else declares
     return graphed.vary(
         shifted,
         "btag",
         _sf(sjets, SF_CENTRAL),
         is_weight=True,
-        variations={"hf_up": hf_up, "hf_down": _sf(sjets, SF_HF_DOWN), "jesup_hf_up": hf_up},
-        **extra,
+        points=points,
     )
 
 

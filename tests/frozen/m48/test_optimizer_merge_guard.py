@@ -12,7 +12,7 @@ m49, so m48 refuses rather than mis-slicing; a mis-slice surfaces as an opaque w
 `IndexError`. The guard's SITE is the group-plan builder, not `compile_ir` and not
 `aggregate_plan`, and it fires over a VARIED program only.
 
-§1.1's stringified-float families make `variations={s: w * float(s)}` — which contains a literal
+§1.1's stringified-float families make `points={s: w * float(s)}` — which contains a literal
 `w * 1.0` member — a natural spelling, which is why this is guarded rather than documented.
 """
 
@@ -63,7 +63,7 @@ def test_a_varied_program_whose_labels_the_optimizer_merges_is_refused() -> None
     message = str(excinfo.value)
     assert "met" in message
     assert "nominal" in message and "sig_up" in message
-    assert "variations=" in message, "the refusal must carry the same-expression workaround"
+    assert "points=" in message, "the refusal must carry the same-expression workaround"
 
 
 def test_a_varied_program_the_optimizer_does_not_merge_plans_normally() -> None:
