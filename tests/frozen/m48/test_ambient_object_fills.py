@@ -8,9 +8,10 @@ a broadcast-to-value-structure seam for EVERY weight factor it applies: the ambi
 explicit `weight=[...]` entry alike, since the evaluator flattens each input independently and
 multiplies after flattening.
 
-The trigger for that seam is a DISJUNCTION (§6.3(2)) — a context handle OR any `Varied` input — so
-the contexted-but-unvaried fill is a case of its own, asserted here with a witness that the seam
-node was really recorded rather than the reference agreeing by accident.
+The trigger for that seam is a DISJUNCTION (§6.3(2)) — a context handle, any `Varied` input, or a
+weight whose recorded FORM sits at a different row space than the value's — so the
+contexted-but-unvaried fill and its context-free twin are cases of their own, asserted here with a
+witness that the seam node was really recorded rather than the reference agreeing by accident.
 
 This file also carries the three fill-shaped label-set assertions that §10/m48's §2.6 bullet
 routes to `graphed-histogram`: asserting a fill's label set needs `Histogram.fill`, which no
@@ -133,24 +134,31 @@ def _unvaried_contexted() -> tuple[Any, gh.boost.Histogram, int]:
 
 
 def test_a_contexted_but_unvaried_fill_broadcasts_and_records_the_seam() -> None:
+    """The seam follows the ROW SPACES, not the context handle: the plain twin of the contexted
+    fill — same per-object value, same per-event factor, no handle and no `Varied` anywhere —
+    records the same seam and evaluates to the same histogram. Without it the plain fill records
+    one node and dies inside boost on lengths it never broadcast, which is the shape every
+    non-systematics analysis writes."""
     session, h, contexted_delta = _unvaried_contexted()
 
     plain_session, plain_root = in_memory_events()
     value, factor = plain_root.Jet.pt, _explicit(plain_root)
+    assert graphed.context_of(value) is None and graphed.context_of(factor) is None
     plain = weighted(bins=20, lo=0.0, hi=400.0)
     before = plain_session.node_count()
     plain.fill(value, weight=[factor])
     plain_delta = plain_session.node_count() - before
 
-    assert plain_delta == 1, "a fill with neither a handle nor a Varied input records as today"
-    assert contexted_delta > plain_delta, "the broadcast seam node was not recorded"
+    assert plain_delta == contexted_delta, "the plain fill did not record the contexted fill's seam"
+    assert plain_delta > 1, "neither fill recorded a broadcast seam node"
 
     jet_pt = EVENTS.Jet.pt
     explicit = EVENTS.MET.pt * 0.5 + 1.0
     reference = eager_weighted(bins=20, lo=0.0, hi=400.0)
     reference.fill(flat(jet_pt), weight=broadcast_reference(jet_pt, explicit))
-    got = session.materialize(h.fill_nodes()[0])
-    assert np.allclose(got.view(flow=True)["value"], reference.view(flow=True)["value"], rtol=1e-12)
+    for evaluated, fill_nodes in ((session, h.fill_nodes()), (plain_session, plain.fill_nodes())):
+        got = evaluated.materialize(fill_nodes[0])
+        assert np.allclose(got.view(flow=True)["value"], reference.view(flow=True)["value"], rtol=1e-12)
 
 
 # --- the three label-set assertions §10/m48 routes here from the §2.6 bullet -------------------
