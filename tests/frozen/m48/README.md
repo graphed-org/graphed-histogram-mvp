@@ -41,6 +41,12 @@ Authority: `systematics-vary-plan.md` r33. Section references in the files are t
 | H6 | §2.2 fill-label superset (context-borne half only) — relocated from A8(b) | `test_ambient_object_fills.py::test_the_contexts_labels_are_the_CONTEXT_BORNE_half_of_a_fills_label_set` |
 | H6 | §2.6b pre-`vary` fill carries no new label — relocated from A7 | `test_ambient_object_fills.py::test_a_fill_from_the_pre_vary_context_carries_no_new_label` |
 | H6 | §2.3e origination pair: one node id, two fill label sets — relocated from A7 | `test_ambient_object_fills.py::test_the_origination_pair_has_one_node_id_and_two_fill_label_sets` |
+| H6 | §6.3(2) matched row space records ONE node — the seam-trigger control | `test_broadcast_seam_row_spaces.py::test_a_plain_fill_at_one_row_space_records_a_single_node` |
+| H6 | §6.3(2) a scalar weight is at no row space and takes no seam | `test_broadcast_seam_row_spaces.py::test_an_awkward_scalar_weight_is_no_row_space_and_takes_no_seam` |
+| H6 | §6.3(2) a backend without `broadcast_like` (numpy) records no seam at any row space | `test_broadcast_seam_row_spaces.py::test_the_numpy_idiom_records_no_seam_at_any_row_space` |
+| H6 | §6.3(2) leaf-row-space factor passes through re-nested; its outer-row-space twin takes the seam | `test_broadcast_seam_row_spaces.py::test_an_already_flat_per_object_weight_fills_while_its_per_event_twin_takes_the_seam` |
+| H6 | §6.3(2) a value with missing entries stands the seam down at both ends and still blames by name | `test_broadcast_seam_row_spaces.py::test_a_value_with_missing_entries_keeps_its_pre_seam_fill_and_still_blames` |
+| H6 | §6.3(2) a factor deeper than the value records no seam; a shallower one does | `test_broadcast_seam_row_spaces.py::test_a_factor_deeper_than_the_value_records_no_seam_but_a_shallower_one_does` |
 | H7 | §6.1d execution-time refusal naming the AMBIENT factor | `test_fill_flatten_refusals.py::test_an_already_flattened_value_against_the_ambient_weight_names_the_ambient_factor` |
 | H7 | §6.1d no record-time raise | `test_fill_flatten_refusals.py::test_the_refusal_is_not_raised_at_record_time` |
 | H7 | §6.1d offending EXPLICIT factor named by position | `test_fill_flatten_refusals.py::test_an_offending_explicit_factor_is_named_by_its_position_in_the_weight_list` |
