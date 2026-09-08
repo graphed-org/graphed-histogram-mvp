@@ -126,12 +126,93 @@ _LOOSE_ROWS = (
 )
 
 
+def _depth(form: object) -> int | None:
+    """How many nested lengths a recorded form carries — a per-EVENT column is 1, a per-object one
+    2 — or ``None`` for NO row space at all: either the backend's form does not say (a rectilinear
+    idiom needs no broadcast) or the operand is a scalar, which broadcasts against anything. That
+    last case is `_rows`'s runtime contract read at record time; disagreeing with it would fire the
+    seam on a fill whose guard then provably cannot trip, moving a working program's graph.
+
+    Read off the form rather than off the data: the fill records, so this is the only handle on the
+    row space at record time, and it is the one the awkward idiom already uses (``.tt.ndim``)."""
+    tt = getattr(form, "tt", None)  # the awkward form's typetracer
+    ndim = getattr(tt if tt is not None else form, "ndim", None)
+    return ndim if isinstance(ndim, int) and ndim > 0 else None
+
+
+def _option_anywhere(layout_form: object) -> bool:
+    """Does an awkward layout form carry a missing value at any level?
+
+    Record and union forms nest through ``contents``; a list or option form through ``content``.
+    The list is read first because a record form also answers to ``content`` — with a bound METHOD,
+    which recursing into would walk right past an optional field."""
+    if getattr(layout_form, "is_option", False):
+        return True
+    nested = getattr(layout_form, "contents", None)
+    if nested is None:
+        content = getattr(layout_form, "content", None)
+        nested = () if content is None or callable(content) else (content,)
+    return any(_option_anywhere(inner) for inner in nested)
+
+
+def _drops_rows(value: object) -> bool:
+    """Does this value — a recorded form, or a chunk of one — carry MISSING entries?
+
+    `_flat` drops them, so such a value's leaf row space is not the one its structure counts out:
+    a factor already flat at it cannot be re-nested into the value (the counts that would carry it
+    no longer describe it), and at record time a factor at that row space cannot be told from one
+    at the event row space either. So a fill over such a value keeps the graph and the elementwise
+    semantics it had before the seam existed, and the guard blames rather than repairing."""
+    tt = getattr(value, "tt", None)  # a recorded awkward form wraps its typetracer; a chunk is one
+    layout = getattr(tt if tt is not None else value, "layout", None)
+    return layout is not None and _option_anywhere(layout.form)
+
+
+def _mixed_row_spaces(session: Any, value: Operand, applied: Sequence[Operand]) -> bool:
+    """Does any applied weight factor sit SHALLOWER than the fill's value, where the seam repairs?
+
+    The evaluator flattens each input independently, so an un-broadcast per-event weight against a
+    per-object value reaches boost with the wrong length and dies there naming neither. Deciding on
+    the FORMS, not on the presence of a context or a `Varied`, is what makes the plain fill — the
+    one every non-systematics analysis writes — take the same seam.
+
+    Only in that one direction, though. `broadcast_like` lines a shallower factor up with a deeper
+    value and nothing else, so firing on a DEEPER factor (or on an idiom whose backend supplies no
+    seam at all, where it is the bound no-op) records a step that cannot repair anything and can
+    only move — or break — a program that worked."""
+    if getattr(session.backend, "broadcast_like", None) is None:
+        return False
+    value_form = session.form(graphed.member_of(value, "nominal"))
+    depth = _depth(value_form)
+    if depth is None or _drops_rows(value_form):
+        return False
+    for factor in applied:
+        other = _depth(session.form(graphed.member_of(factor, "nominal")))
+        if other is not None and other < depth:
+            return True
+    return False
+
+
 def _rows(values: object) -> int | None:
     """A chunk's outer length, ``None`` for a scalar (which broadcasts against anything)."""
     try:
         return len(values)  # type: ignore[arg-type]
     except TypeError:
         return None
+
+
+def _renest(value: object, factor: object) -> object:
+    """`factor`, already flat at `value`'s LEAF row space, given the value's nesting so that the
+    broadcast downstream of the guard is the identity rather than a shape error.
+
+    A rectilinear idiom needs nothing: its seam is the bound no-op and the evaluator ravels both."""
+    if not hasattr(value, "layout"):  # an awkward array (the `_flat` lazy-import boundary)
+        return factor
+    import awkward as ak  # noqa: PLC0415
+
+    for axis in range(int(getattr(value, "ndim", 1)) - 1, 0, -1):
+        factor = ak.unflatten(factor, ak.flatten(ak.num(value, axis=axis), axis=None))
+    return factor
 
 
 @dataclass(frozen=True)
@@ -142,16 +223,21 @@ class _WeightGuard:
     broadcast with a shape message naming neither the fill nor the factor. This node runs first
     (the broadcast consumes its output) and carries the one thing only the fill knows: WHICH operand is
     at the wrong row space. Record-time detection is impossible — a per-event value and a
-    flattened per-object value have identical 1-D forms.
+    flattened per-object value have identical 1-D forms — so the two row spaces a fill accepts are
+    told apart HERE, where both lengths are known: the value's OUTER one, which the broadcast then
+    lines up, and its LEAF one, an already-flat per-object factor the evaluator would multiply
+    elementwise unaided. Anything else is the blame.
     """
 
     message: str
 
     def __call__(self, factor: object, value: object) -> object:
         wide, tall = _rows(factor), _rows(value)
-        if wide is not None and tall is not None and wide != tall:
-            raise GraphedError(self.message)
-        return factor
+        if wide is None or tall is None or wide == tall:
+            return factor
+        if not _drops_rows(value) and wide == _rows(_flat(value)):
+            return _renest(value, factor)
+        raise GraphedError(self.message)
 
 
 @dataclass(frozen=True)
@@ -418,11 +504,16 @@ class Histogram(bh.Histogram):
 
         applied: list[Operand] = ([] if ambient is None else [ambient]) + factors
         labels = _fold_labels([*axes, *applied, *([] if sampled is None else [sampled])])
-        # a fill carrying NEITHER a context handle nor a `Varied` input records exactly as it did
-        # before variations existed: no broadcast step, one node, the same graph as before
-        broadcast = ctx is not None or any(isinstance(value, Varied) for value in given)
         blame = _blame(args, ctx, ambient is not None, len(factors))
         session = graphed.member_of(axes[0], "nominal").session
+        # a fill whose factors already share the value's row space and carries neither a context
+        # handle nor a `Varied` input records exactly as it did before variations existed: no
+        # broadcast step, one node, the same graph as before
+        broadcast = (
+            ctx is not None
+            or any(isinstance(value, Varied) for value in given)
+            or _mixed_row_spaces(session, axes[0], applied)
+        )
 
         if variation_axis:
             if established and self._axis_labels is not None and set(labels) != set(self._axis_labels):
